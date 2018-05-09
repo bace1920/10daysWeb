@@ -1,2 +1,19 @@
 # 10daysWeb
-A just-for-learning web framework that can be developed in 10 days.
+**A just-for-learning web framework that can be developed in 10 days.**
+
+# 啰嗦
+出于某些原因，我需要一个自己开发的轮子，大约只有十天时间。
+
+于是我打算开发一个python web框架，这是我一直想做却又未完成的事。
+
+我没有写过类似的代码，我使用过一些web框架，但并不精通。
+
+我打算每天迭代，一遍写一遍查阅资料，记录新的想法和发现。
+
+这样如果有谁与我处境相似，这个项目也许能够有所帮助。
+
+最好能用成品再搭个博客什么的。
+
+即使没有成功，也不会一无所获。
+
+我们开始吧。
