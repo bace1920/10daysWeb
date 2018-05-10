@@ -54,7 +54,7 @@ class TenDaysWeb():
         content = ''
         for rule in self._rule_list:
             if rule._url == url:
-                content = rule.get_endpoint()()
+                content = await rule.get_endpoint()()
         response: bytes = f'HTTP/1.1 200 OK\r\n'.encode()
         response += b'\r\n'
         response += content.encode()
@@ -92,6 +92,7 @@ class TenDaysWeb():
             loop.run_forever()
         except KeyboardInterrupt:
             loop.close()
+
 
 class Rule():
     def __init__(self, url: AnyStr, methods: List, endpoint: Callable,
