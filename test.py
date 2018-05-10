@@ -5,8 +5,13 @@ testApp = TenDaysWeb('testApp')
 
 
 @testApp.route('/', methods=['GET'])
-def hello():
-    return 'hello world'
+async def hello_async():
+    await 'async hello world'
+
+
+@testApp.route('/sync', methods=['GET'])
+def hello_sync():
+    return 'snyc hello world!'
 
 
 if __name__ == '__main__':

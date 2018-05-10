@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 import asyncio
-import httptools
+import inspect
+import logging
 from typing import Callable, List, AnyStr
 
-from aiohttp import web
 
-HTTP_METHODS = [
-    'OPTIONS',
-    'GET',
-    'HEAD',
-    'POST',
-    'PUT',
-    'DELETE',
-    'TRACE',
-    'CONNECT',
-]
+
+from .request import Request
+from .response import Response
+from .exceptions import HttpException
+from .utils import HTTP_METHODS
 
 
 class TenDaysWeb():
@@ -49,20 +44,45 @@ class TenDaysWeb():
         :param request: the Request instance
         :return: The Response instance
         """
-        data = await reader.read(2048)
-        url = data.decode().split(' ')[1]
-        content = ''
-        for rule in self._rule_list:
-            if rule._url == url:
-                content = await rule.get_endpoint()()
-        response: bytes = f'HTTP/1.1 200 OK\r\n'.encode()
-        response += b'\r\n'
-        response += content.encode()
+        while True:
+            data = b''
+            while True:
+                new_data = await reader.read(1024)
+                if new_data == b'':
+                    break
+                else:
+                    data += new_data
 
-        #send payload
-        writer.write(response)
-        await writer.drain()
-        writer.close()
+            logging.info(f'{data}')
+
+            response: Response = Response()
+            request: Request = Request.load_from_str(data)
+
+            handle = None
+            for rule in self._rule_list:
+                if request.url == rule._url and request.method in rule._methods:
+                    handle = rule._endpoint
+
+            # try:
+            if not callable(handle):
+                pass
+            elif inspect.iscoroutinefunction(handle):
+                response.content = await handle()
+            else:
+                response.content = handle()
+            # except HttpException as e:
+            #     response.code = e.errCode
+            #     response.reason_phrase = e.err
+            #     response.content = e.content.encode()
+
+
+            #send payload
+            writer.write(response.to_payload())
+            await writer.drain()
+            if request.headers.get('Connection', None) == 'keep-alive':
+                continue
+            else:
+                writer.close()
 
     async def start_server(self,
                            http_handler: Callable,
@@ -98,18 +118,12 @@ class Rule():
     def __init__(self, url: AnyStr, methods: List, endpoint: Callable,
                  **options):
         """
-            A rule describes a url is expected to be handled and how to handle it.
-            :param url: url to be handled
-            :param method: a list of HTTP method to specify which methods should be handled
-            :param endpoint: the actual function/class process this request
-            """
+        A rule describes a url is expected to be handled and how to handle it.
+        :param url: url to be handled
+        :param method: a list of HTTP method to specify which methods should be handled
+        :param endpoint: the actual function/class process this request
+        """
         self._url = url
         self._methods = methods
         self._options = options
         self._endpoint = endpoint
-
-    def get_url(self) -> AnyStr:
-        return self._url
-
-    def get_endpoint(self)-> Callable:
-        return self._endpoint
