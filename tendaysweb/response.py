@@ -19,8 +19,16 @@ class Response:
 
     def to_payload(self):
         response: bytes = f'HTTP/1.1 {self.status_code} {self.reason_phrase}\r\n'.encode()
-        for k, v in self.headers:
+        for k, v in self.headers.items():
             response += f'{k}: {v}\r\n'.encode()
         response += b'\r\n'
         response += self.content.encode()
         return response
+
+    # @classmethod
+    # def construct_response(cls, *args):
+    #     if len(args) == 1:
+    #         response = cls(200, {}, args[0])
+    #     elif len(args) == 2:
+            
+    #     return cls(status_code, headers, content)

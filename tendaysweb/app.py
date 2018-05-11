@@ -2,14 +2,19 @@
 import asyncio
 import inspect
 import logging
-from typing import Callable, List, AnyStr
+import functools
+from typing import Callable, List, AnyStr, Dict
 
-
+import httptools
 
 from .request import Request
 from .response import Response
 from .exceptions import HttpException
 from .utils import HTTP_METHODS
+
+
+logger = logging.getLogger('tendaysweb')
+
 
 
 class TenDaysWeb():
@@ -32,9 +37,9 @@ class TenDaysWeb():
                 return 'Hello World'
         """
 
-        def decorator(f):
-            self._rule_list.append(Rule(url, methods, f, **options))
-            return f
+        def decorator(func):
+            self._rule_list.append(Rule(url, methods, func, **options))
+            return func
 
         return decorator
 
@@ -44,41 +49,24 @@ class TenDaysWeb():
         :param request: the Request instance
         :return: The Response instance
         """
-        while True:
-            data = b''
-            while True:
-                new_data = await reader.read(1024)
-                if new_data == b'':
-                    break
-                else:
-                    data += new_data
+        request: Request = await TenDaysWeb.read_http_message(reader)
+        response: Response = Response()
 
-            logging.info(f'{data}')
+        handle = None
+        for rule in self._rule_list:
+            if request.url == rule._url and request.method in rule._methods:
+                handle = rule._endpoint
 
-            response: Response = Response()
-            request: Request = Request.load_from_str(data)
+        if not callable(handle):
+            pass
+        else:
+            response.content = await handle(request)  # Response.construct_response()
 
-            handle = None
-            for rule in self._rule_list:
-                if request.url == rule._url and request.method in rule._methods:
-                    handle = rule._endpoint
+        #send payload
+        writer.write(response.to_payload())
 
-            # try:
-            if not callable(handle):
-                pass
-            elif inspect.iscoroutinefunction(handle):
-                response.content = await handle()
-            else:
-                response.content = handle()
-
-
-            #send payload
-            writer.write(response.to_payload())
-            await writer.drain()
-            if request.headers.get('Connection', None) == 'keep-alive':
-                continue
-            else:
-                writer.close()
+        await writer.drain()
+        writer.close()
 
     async def start_server(self,
                            http_handler: Callable,
@@ -105,9 +93,35 @@ class TenDaysWeb():
 
         try:
             loop.run_until_complete(self.start_server(self.handler, None, host, port))
+            logger.info(f'Start listening {host}:{port}')
             loop.run_forever()
         except KeyboardInterrupt:
             loop.close()
+
+    @staticmethod
+    async def read_http_message(
+            reader: asyncio.streams.StreamReader) -> Request:
+        """
+        this funciton will reading data cyclically until recivied a complete http message
+        :param reqreaderuest: the asyncio.streams.StreamReader instance
+        :return The Request instance
+        """
+        protocol = ParseProtocol()
+        parser = httptools.HttpRequestParser(protocol)
+        while True:
+            data = await reader.read(2 ** 16)
+
+            try:
+                parser.feed_data(data)
+            except httptools.HttpParserUpgrade:
+                raise HttpException(400)
+
+            if protocol.completed:
+                request: Request = Request.load_from_parser(parser, protocol)
+                break
+            if data == b'':
+                return None
+        return request
 
 
 class Rule():
@@ -123,3 +137,27 @@ class Rule():
         self._methods = methods
         self._options = options
         self._endpoint = endpoint
+
+
+class ParseProtocol:
+    """
+    The protocol for HttpRequestParser
+    """
+
+    def __init__(self) -> None:
+        self.url: str = ''
+        self.headers: Dict[str, str] = {}
+        self.body: bytes = b''
+        self.completed: bool = False
+
+    def on_url(self, url: bytes) -> None:
+        self.url = url.decode()
+
+    def on_header(self, name: bytes, value: bytes) -> None:
+        self.headers[name.decode()] = value.decode()
+
+    def on_body(self, body: bytes) -> None:
+        self.body += body
+
+    def on_message_complete(self) -> None:
+        self.completed = True
