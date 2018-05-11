@@ -70,10 +70,6 @@ class TenDaysWeb():
                 response.content = await handle()
             else:
                 response.content = handle()
-            # except HttpException as e:
-            #     response.code = e.errCode
-            #     response.reason_phrase = e.err
-            #     response.content = e.content.encode()
 
 
             #send payload
