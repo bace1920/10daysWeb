@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 from typing import Dict
-from .exceptions import HttpException
-
-from httptools import HttpRequestParser, HttpParserUpgrade
 
 
 class Request:
@@ -14,8 +11,11 @@ class Request:
         self.headers = headers
         self.content = content
 
-
     @classmethod
-    def load_from_parser(cls, parser: HttpRequestParser,
+    def load_from_parser(cls, parser: 'HttpRequestParser',
                          protocol: 'ParseProtocol') -> 'Request':
-        return cls(parser.get_method().decode(), protocol.url, parser.get_http_version(), protocol.headers, protocol.body)
+        return cls(
+                parser.get_method().decode(),
+                protocol.url,
+                parser.get_http_version(),
+                protocol.headers, protocol.body)

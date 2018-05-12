@@ -1,31 +1,28 @@
 # -*- coding: utf-8 -*-
 import asyncio
-import inspect
 import logging
-import functools
-from typing import Callable, List, AnyStr, Dict
+import re
+from typing import Callable, List, AnyStr, Dict, Tuple, Any
 
 import httptools
 
 from .request import Request
 from .response import Response
 from .exceptions import HttpException
-from .utils import HTTP_METHODS
+from .utils import HTTP_METHODS, STATUS_CODES, DEFAULT_ERROR_PAGE_TEMPLATE
 
 
 logger = logging.getLogger('tendaysweb')
 
 
-
 class TenDaysWeb():
     def __init__(self, application_name):
         """
-        TenDaysWeb allow user create multi instace in one application.
         :param application_name: just name your TenDaysWeb Instance
         """
         self._app_name = application_name
-        self._rule_list = []
-        pass
+        self._rule_list: List[Rule] = []
+        self._error_handlers: Dict[int, Callable] = {}
 
     def route(self, url: str, methods: List = HTTP_METHODS, **options):
         """
@@ -36,12 +33,63 @@ class TenDaysWeb():
             def index():
                 return 'Hello World'
         """
-
         def decorator(func):
             self._rule_list.append(Rule(url, methods, func, **options))
             return func
 
         return decorator
+
+    def error_handler(self, error_code):
+        """
+        This decorator is used to customize the behavior of an error
+        :param error_code:a http status code
+        """
+        async def decorator(func):
+            self._error_handlers[error_code] = func
+            return func
+        return decorator
+
+    def match_request(self, request) -> Tuple[Callable, Dict[str, Any]]:
+        """
+        Match each request to a endpoint
+        if no endpoint is eligable, return None, None
+        """
+        handler = kwargs = None
+        for rule in self._rule_list:
+            kwargs = rule.match(request.url, request.method)
+            if kwargs is not None:
+                handler = rule._endpoint
+                break
+        return handler, kwargs
+
+    async def process_request(
+                            self,
+                            request: Request,
+                            handler: Callable,
+                            kwargs: Dict[str, Any]):
+        """
+        :param request: Request instance
+        :param handler: A endpoint
+        :param kwargs: the additional parameters for call endpoint
+        """
+        try:
+            return await handler(request, **kwargs)
+        except HttpException as e:
+            # catch exception user explicit rasie in endpoint
+            handler = self._error_handlers.get(e.err_code, None)
+            if handler is None:
+                return await self._error_handlers[
+                    e.err_code
+                ]() if self._error_handlers.get(
+                    e.err_code, None) else Response(
+                        status_code=e.err_code,
+                        content=TenDaysWeb.generate_default_error_page(
+                            e.err_code))
+        except Exception as e:
+            # catch any unexpected error in endpoint
+            return Response(
+                status_code=500,
+                content=TenDaysWeb.generate_default_error_page(500))
 
     async def handler(self, reader, writer):
         """
@@ -49,24 +97,32 @@ class TenDaysWeb():
         :param request: the Request instance
         :return: The Response instance
         """
-        request: Request = await TenDaysWeb.read_http_message(reader)
-        response: Response = Response()
+        while True:
+            request: Request = await self.read_http_message(reader)
+            response: Response = Response()
 
-        handle = None
-        for rule in self._rule_list:
-            if request.url == rule._url and request.method in rule._methods:
-                handle = rule._endpoint
+            if request is None:
+                writer.close()
+                break
 
-        if not callable(handle):
-            pass
-        else:
-            response.content = await handle(request)  # Response.construct_response()
+            handler, kwargs = self.match_request(request)
 
-        #send payload
-        writer.write(response.to_payload())
+            if handler is None:
+                response.status_code = 404
+                response.content = TenDaysWeb.generate_default_error_page(
+                    response.status_code)
+            else:
+                response = await self.process_request(request, handler, kwargs)
 
-        await writer.drain()
-        writer.close()
+            # send payload
+            writer.write(response.to_payload())
+
+            try:
+                await writer.drain()
+                writer.write_eof()
+            except ConnectionResetError:
+                writer.close()
+                break
 
     async def start_server(self,
                            http_handler: Callable,
@@ -92,17 +148,18 @@ class TenDaysWeb():
         loop = asyncio.get_event_loop()
 
         try:
-            loop.run_until_complete(self.start_server(self.handler, None, host, port))
+            loop.run_until_complete(
+                self.start_server(self.handler, None, host, port))
             logger.info(f'Start listening {host}:{port}')
             loop.run_forever()
         except KeyboardInterrupt:
             loop.close()
 
-    @staticmethod
     async def read_http_message(
-            reader: asyncio.streams.StreamReader) -> Request:
+            self, reader: asyncio.streams.StreamReader) -> Request:
         """
-        this funciton will reading data cyclically until recivied a complete http message
+        this funciton will reading data cyclically
+            until recivied a complete http message
         :param reqreaderuest: the asyncio.streams.StreamReader instance
         :return The Request instance
         """
@@ -117,26 +174,49 @@ class TenDaysWeb():
                 raise HttpException(400)
 
             if protocol.completed:
-                request: Request = Request.load_from_parser(parser, protocol)
-                break
+                return Request.load_from_parser(parser, protocol)
             if data == b'':
                 return None
-        return request
+
+    @staticmethod
+    def generate_default_error_page(status, reason='', content=''):
+        return DEFAULT_ERROR_PAGE_TEMPLATE.format(
+                            **{'status': status,
+                                'reason': STATUS_CODES.get(status, 'Unknow'),
+                                'content': content})
 
 
 class Rule():
+    parttern = re.compile(r'\<([^/]+)\>')
+
     def __init__(self, url: AnyStr, methods: List, endpoint: Callable,
                  **options):
         """
         A rule describes a url is expected to be handled and how to handle it.
         :param url: url to be handled
-        :param method: a list of HTTP method to specify which methods should be handled
+        :param method: list of HTTP method name
         :param endpoint: the actual function/class process this request
         """
         self._url = url
         self._methods = methods
         self._options = options
         self._endpoint = endpoint
+
+        self._param_name_list = Rule.parttern.findall(url)
+        self._url_pattern = re.compile(
+            f'''^{Rule.parttern.sub('([^/]+)', url)}$''')
+
+    def match(self, url: str, method: str):
+        """
+        this function is used to judge whether a (url, method) matchs the Rule
+        """
+        res = self._url_pattern.search(url)
+        if method in self._methods and res is not None:
+            return dict(zip(
+                self._param_name_list,
+                [res.group(i) for i in range(
+                    1, self._url_pattern.groups + 1)]))
+        return None
 
 
 class ParseProtocol:

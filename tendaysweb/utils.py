@@ -55,3 +55,14 @@ STATUS_CODES = {
     504: 'Gateway Time-out',
     505: 'HTTP Version not supported',
 }
+
+DEFAULT_ERROR_PAGE_TEMPLATE = '''
+<html>
+  <head>
+    <title>{status} {reason}</title>
+  </head>
+  <body>
+    <h1>{status} {reason}</h1>
+    {content}
+  </body>
+</html>'''

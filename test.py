@@ -1,18 +1,23 @@
 # -*- coding: utf-8 -*-
-from tendaysweb import TenDaysWeb
+from tendaysweb import TenDaysWeb, Response
 
-testApp = TenDaysWeb('testApp')
+app = TenDaysWeb('testApp')
 
 
-@testApp.route('/', methods=['GET'])
+@app.route('/', methods=['GET'])
 async def index(request):
-    return 'acync hello world'
+    return Response(content='acync hello world')
 
 
-# @testApp.route('/sync', methods=['GET'])
-# asyncdef hello_sync():
-#     return 'snyc hello world!'
+@app.route('/<name>', methods=['GET'])
+async def show_name(request, name):
+    return Response(content=f'hello {name}')
+
+
+@app.error_handler(404)
+async def not_found():
+    return Response(content='not found')
 
 
 if __name__ == '__main__':
-    testApp.run()
+    app.run()
