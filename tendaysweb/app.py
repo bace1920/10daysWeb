@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
+import inspect
 import re
 from typing import Callable, List, AnyStr, Dict, Tuple, Any
 
@@ -13,6 +14,7 @@ from .utils import HTTP_METHODS, STATUS_CODES, DEFAULT_ERROR_PAGE_TEMPLATE
 
 
 logger = logging.getLogger('tendaysweb')
+logging.basicConfig(level=logging.INFO)
 
 
 class TenDaysWeb():
@@ -23,6 +25,7 @@ class TenDaysWeb():
         self._app_name = application_name
         self._rule_list: List[Rule] = []
         self._error_handlers: Dict[int, Callable] = {}
+        self._run_before_list: List[Callable] = []
 
     def route(self, url: str, methods: List = HTTP_METHODS, **options):
         """
@@ -36,7 +39,16 @@ class TenDaysWeb():
         def decorator(func):
             self._rule_list.append(Rule(url, methods, func, **options))
             return func
+        return decorator
 
+    def run_before(self):
+        """
+            A decorator that is used to register a function supposed to be called
+            before start_server
+        """
+        def decorator(func):
+            self._run_before_list.append(func)
+            return func
         return decorator
 
     def error_handler(self, error_code):
@@ -78,18 +90,11 @@ class TenDaysWeb():
             # catch exception user explicit rasie in endpoint
             handler = self._error_handlers.get(e.err_code, None)
             if handler is None:
-                return await self._error_handlers[
-                    e.err_code
-                ]() if self._error_handlers.get(
-                    e.err_code, None) else Response(
+                return Response(
                         status_code=e.err_code,
                         content=TenDaysWeb.generate_default_error_page(
                             e.err_code))
-        except Exception as e:
-            # catch any unexpected error in endpoint
-            return Response(
-                status_code=500,
-                content=TenDaysWeb.generate_default_error_page(500))
+            return await handler()
 
     async def handler(self, reader, writer):
         """
@@ -112,7 +117,14 @@ class TenDaysWeb():
                 response.content = TenDaysWeb.generate_default_error_page(
                     response.status_code)
             else:
-                response = await self.process_request(request, handler, kwargs)
+                try:
+                    response = await self.process_request(
+                        request, handler, kwargs)
+                except Exception as e:
+                    logger.error(str(e))
+                    response = Response(
+                        status_code=500,
+                        content=TenDaysWeb.generate_default_error_page(500))
 
             # send payload
             writer.write(response.to_payload())
@@ -125,14 +137,21 @@ class TenDaysWeb():
                 break
 
     async def start_server(self,
+                           loop,
                            http_handler: Callable,
                            websocket_handler=None,
                            address: str = 'localhost',
-                           port: int = 8000):
+                           port: int=8000,):
         """
         start server
         """
-        return await asyncio.start_server(http_handler, address, port)
+        for func in self._run_before_list:
+            if inspect.iscoroutinefunction(func):
+                await func(loop)
+            else:
+                func()
+
+        await asyncio.start_server(http_handler, address, port)
 
     def run(self,
             host: str = "localhost",
@@ -144,12 +163,11 @@ class TenDaysWeb():
         :param port: The listening port
         :param debug: whether it is in debug mod or not
         """
-        self.debug = debug
         loop = asyncio.get_event_loop()
 
         try:
             loop.run_until_complete(
-                self.start_server(self.handler, None, host, port))
+                self.start_server(loop, self.handler, None, host, port))
             logger.info(f'Start listening {host}:{port}')
             loop.run_forever()
         except KeyboardInterrupt:

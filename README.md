@@ -1,6 +1,10 @@
 # 10daysWeb
 **A just-for-learning web framework that can be developed in 10 days.**
 
+![PyPI](#https://img.shields.io/pypi/pyversions/10daysweb.svg)
+![PyPI](#https://img.shields.io/pypi/status/10daysweb.svg)
+![PyPI](#https://img.shields.io/pypi/v/10daysweb.svg)
+
 # 啰嗦
 出于某些原因，我需要一个自己开发的轮子，大约只有十天时间。
 
@@ -89,6 +93,16 @@
 添加了`errorhandler`装饰器，现在可以通过它自定义异常时的行为和返回报文
 
 调整了异常捕获机制，现在在找不到对应的用户方法时，能够正确的抛出404异常，而在用户方法中非预期中异常，则统一作为500状态处理
+
+## Day 5 & 6
+
+加入了`run_before`装饰器，用于在运行启动服务器前的初始化代码，默认传入事件循环loop参数
+
+把这个~~丢人~~框架上传到了pip，现在可以通过`pip install 10daysweb`安装使用
+
+尝试写一个todolist应用作为演示，康了半天前端觉得有些仓促，决定接入telegram bot
+
+加入了unitest，初步编写了一个url匹配的测试样例
 
 ## 如何下载最早的commit代码
 
