@@ -1,9 +1,7 @@
 # 10daysWeb
 **A just-for-learning web framework that can be developed in 10 days.**
 
-![PyPI](#https://img.shields.io/pypi/pyversions/10daysweb.svg)
-![PyPI](#https://img.shields.io/pypi/status/10daysweb.svg)
-![PyPI](#https://img.shields.io/pypi/v/10daysweb.svg)
+![PyPI](https://img.shields.io/pypi/pyversions/10daysweb.svg) ![PyPI](https://img.shields.io/pypi/status/10daysweb.svg) ![PyPI](https://img.shields.io/pypi/v/10daysweb.svg)
 
 # 啰嗦
 出于某些原因，我需要一个自己开发的轮子，大约只有十天时间。
