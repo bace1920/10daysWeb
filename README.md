@@ -98,9 +98,20 @@
 
 把这个~~丢人~~框架上传到了pip，现在可以通过`pip install 10daysweb`安装使用
 
-尝试写一个todolist应用作为演示，康了半天前端觉得有些仓促，决定接入telegram bot
+尝试写一个todolist应用作为演示，康了半天前端觉得有些仓促，决定接入~~Telegram Bot~~微信小程序
 
 加入了unitest，初步编写了一个url匹配的测试样例
+
+## Day 7
+
+新增信号装饰器，初步想法是用于服务器启动前和结束后初始化和关闭数据库连接池
+
+    @app.signal(type='run_before_start')
+    def foo(loop):
+        '''init database connection pool'''
+
+增加了对应的未知信号类型异常，微信小程序api编写中。
+
 
 ## 如何下载最早的commit代码
 

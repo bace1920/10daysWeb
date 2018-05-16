@@ -9,7 +9,7 @@ import httptools
 
 from .request import Request
 from .response import Response
-from .exceptions import HttpException
+from .exceptions import HttpException, UnknownSignalException
 from .utils import HTTP_METHODS, STATUS_CODES, DEFAULT_ERROR_PAGE_TEMPLATE
 
 
@@ -18,6 +18,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 class TenDaysWeb():
+    _signal_types = ['run_before_start', 'run_after_close']
+
     def __init__(self, application_name):
         """
         :param application_name: just name your TenDaysWeb Instance
@@ -25,7 +27,10 @@ class TenDaysWeb():
         self._app_name = application_name
         self._rule_list: List[Rule] = []
         self._error_handlers: Dict[int, Callable] = {}
-        self._run_before_list: List[Callable] = []
+        self._signal_func: Dict[str, List[Callable]] = {
+            key: []
+            for key in TenDaysWeb._signal_types
+        }
 
     def route(self, url: str, methods: List = HTTP_METHODS, **options):
         """
@@ -41,13 +46,15 @@ class TenDaysWeb():
             return func
         return decorator
 
-    def run_before(self):
+    def signal(self, signal_type: str):
         """
             A decorator that is used to register a function supposed to be called
             before start_server
         """
         def decorator(func):
-            self._run_before_list.append(func)
+            if signal_type not in TenDaysWeb.signal_types:
+                raise UnknownSignalException(signal_type, func.__name__)
+            self._signal_func[signal_type].append(func)
             return func
         return decorator
 
@@ -145,13 +152,19 @@ class TenDaysWeb():
         """
         start server
         """
-        for func in self._run_before_list:
+        for func in self._signal_func['run_before_start']:
             if inspect.iscoroutinefunction(func):
                 await func(loop)
             else:
                 func()
 
         await asyncio.start_server(http_handler, address, port)
+
+        for func in self._signal_func['run_after_close']:
+            if inspect.iscoroutinefunction(func):
+                await func(loop)
+            else:
+                func()
 
     def run(self,
             host: str = "localhost",
