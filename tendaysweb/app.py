@@ -18,7 +18,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 class TenDaysWeb():
-    _signal_types = ['run_before_start', 'run_after_close']
+    _signal_types = [
+        'run_before_start', 'run_after_close',
+        'run_before_close', 'run_after_start',
+    ]
 
     def __init__(self, application_name):
         """
@@ -52,7 +55,7 @@ class TenDaysWeb():
             before start_server
         """
         def decorator(func):
-            if signal_type not in TenDaysWeb.signal_types:
+            if signal_type not in TenDaysWeb._signal_types:
                 raise UnknownSignalException(signal_type, func.__name__)
             self._signal_func[signal_type].append(func)
             return func
@@ -160,6 +163,13 @@ class TenDaysWeb():
 
         await asyncio.start_server(http_handler, address, port)
 
+        for func in self._signal_func['run_after_start']:
+            if inspect.iscoroutinefunction(func):
+                await func(loop)
+            else:
+                func()
+
+    async def run_after_close(self, loop):
         for func in self._signal_func['run_after_close']:
             if inspect.iscoroutinefunction(func):
                 await func(loop)
@@ -184,6 +194,7 @@ class TenDaysWeb():
             logger.info(f'Start listening {host}:{port}')
             loop.run_forever()
         except KeyboardInterrupt:
+            loop.run_until_complete(self.run_after_close(loop))
             loop.close()
 
     async def read_http_message(

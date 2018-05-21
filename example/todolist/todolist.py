@@ -13,32 +13,35 @@ db_connection_pool = None
 app = TenDaysWeb('todolist')
 todolist = TodoList()
 
+SELECT_ALL_SQL = '''
+SELECT * FROM todolist_wechat;
+'''
+
 SELECT_SQL = '''
-SELECT * FROM TABLE todolist_wechat WHERE wechat_uuid='%s'
+SELECT * FROM todolist_wechat WHERE wechat_uuid=%s;\
 '''
 
-INSERT_SQL = '''
-INSERT INTO TABLE 
-todolist_wechat(uuid, wechat_uuid, title, content) 
-values('%s', '%s', '%s', '%s', '%s');
+INSERT_SQL = '''INSERT INTO todolist_wechat(uuid, wechat_uuid, title, content) VALUES(%s, %s, %s, %s);
 '''
 
+DELETE_SQL = '''DELETE FROM todolist_wechat WHERE uuid=%s;'''
 
-@app.signal(type='run_before_start')
+
+@app.signal(signal_type='run_before_start')
 async def init_connection_pool(loop):
     """create a connection pool
     """
     global db_connection_pool
     db_connection_pool = await create_pool(
-        host='server_address',
+        host='data-jp-1.vedbs.link',
         port=3306,
-        user='user',
-        password='password',
-        db='db_name',
+        user='vedbs_1398',
+        password='dC2ZEQ09Nd',
+        db='vedbs_1398',
         loop=loop)
 
 
-@app.signal(type='run_after_close')
+@app.signal(signal_type='run_after_close')
 async def close_connection_pool(self):
     """close a connection pool
     """
@@ -51,13 +54,10 @@ async def close_connection_pool(self):
 async def get_todos_list(request):
     """get all todo's uuid and title
     """
-    todo_json = ujson.load(request.content)
     async with db_connection_pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(SELECT_SQL, (todo_json['wechat_uuid']))
-            print(cur.description)
-            (r,) = await cur.fetchone()
-            assert r == 42
+            await cur.execute(SELECT_ALL_SQL)
+            res = await cur.fetchall()
     return Response(content='New Todo')
 
 
@@ -66,22 +66,45 @@ async def create_todo(request):
     """create a new todo instance store in db and return 
     the uuid of it in response body
     """
-    todo_json = ujson.load(request.content)
+    todo_json = ujson.loads(request.content)
     new_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, 'todo.cykrt.me')
-    todo = Todo(new_uuid, todo_json['title'], todo_json['content'], todo_json['wehcat_uuid'])
+    todo = Todo(
+        str(new_uuid), todo_json['title'], todo_json['content'],
+        todo_json['wechat_uuid'])
     async with db_connection_pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(INSERT_SQL, (todo_json['uuid']))
-            print(cur.description)
-            (r, ) = await cur.fetchone()
-            assert r == 42
-    return Response(content='New Todo')
+            await cur.execute(INSERT_SQL,
+                              (str(new_uuid), todo_json['wechat_uuid'],
+                               todo_json['title'], todo_json['content']))
+        await conn.commit()
+    return Response(content='POST')
+
+
+@app.route('/todos', methods=['DELETE'])
+async def create_todo(request):
+    """create a new todo instance store in db and return 
+    the uuid of it in response body
+    """
+    todo_json = ujson.loads(request.content)
+    todo = Todo(
+        str(new_uuid), todo_json['title'], todo_json['content'],
+        todo_json['wechat_uuid'])
+    async with db_connection_pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(DELETE_SQL, (todo_json['uuid']))
+        await conn.commit()
+    return Response(content='Delete Todo')
+
 
 
 @app.route('/todos/<id>', methods=['GET'])
 async def get_todo_details(request, id):
+    """get all info about a todo
     """
-    """
+    async with db_connection_pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(SELECT_SQL, (todo_json['wechat_uuid']))
+            res = await cur.fetchall()
     return Response(content='acync hello world')
 
 
